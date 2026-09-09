@@ -10,12 +10,7 @@ import { container } from '../../container';
 import type { VanityNumberController } from '../../controllers/vanity-number-controller';
 import { TYPES } from '../../types/symbols';
 
-const limitSchema = z.coerce
-  .number()
-  .int()
-  .min(1)
-  .max(20)
-  .default(5);
+const limitSchema = z.coerce.number().int().min(1).max(20).default(5);
 
 function json(statusCode: number, body: unknown): APIGatewayProxyResultV2 {
   return {

@@ -7,12 +7,16 @@ import { VanityNumberController } from './vanity-number-controller';
 const SAMPLE_CALLERS: CallerRecord[] = [
   {
     phoneNumber: '+18003569377',
-    topVanityNumbers: [{ display: '1-800-FLOWERS', spelled: ['FLOWERS'], score: 343 }] as VanityResult[],
+    topVanityNumbers: [
+      { display: '1-800-FLOWERS', spelled: ['FLOWERS'], score: 343 },
+    ] as VanityResult[],
     createdAt: '2026-01-01T00:00:00.000Z',
   },
   {
     phoneNumber: '+18005550100',
-    topVanityNumbers: [{ display: '1-800-555-ALLO', spelled: ['ALLO'], score: 120 }] as VanityResult[],
+    topVanityNumbers: [
+      { display: '1-800-555-ALLO', spelled: ['ALLO'], score: 120 },
+    ] as VanityResult[],
     createdAt: '2026-01-02T00:00:00.000Z',
   },
 ];
@@ -61,7 +65,9 @@ describe('VanityNumberController', () => {
 
     it('logs info before fetching', async () => {
       await controller.getRecent(7);
-      expect(mockLogger.info).toHaveBeenCalledWith('Fetching recent callers', { limit: 7 });
+      expect(mockLogger.info).toHaveBeenCalledWith('Fetching recent callers', {
+        limit: 7,
+      });
     });
 
     it('propagates service errors', async () => {

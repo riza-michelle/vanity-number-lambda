@@ -56,20 +56,27 @@ describe('VanityNumberService', () => {
 
     it('passes undefined opts through', () => {
       svc.convert('+18003569377');
-      expect(mockConvertToVanity).toHaveBeenCalledWith('+18003569377', undefined);
+      expect(mockConvertToVanity).toHaveBeenCalledWith(
+        '+18003569377',
+        undefined,
+      );
     });
   });
 
   describe('processAndSave', () => {
     it('generates results and saves them', async () => {
       await svc.processAndSave('+18003569377', { top: 5 });
-      expect(mockConvertToVanity).toHaveBeenCalledWith('+18003569377', { top: 5 });
+      expect(mockConvertToVanity).toHaveBeenCalledWith('+18003569377', {
+        top: 5,
+      });
       expect(mockSave).toHaveBeenCalledWith('+18003569377', SAMPLE_RESULTS);
     });
 
     it('defaults top to 5 when opts is omitted', async () => {
       await svc.processAndSave('+18003569377');
-      expect(mockConvertToVanity).toHaveBeenCalledWith('+18003569377', { top: 5 });
+      expect(mockConvertToVanity).toHaveBeenCalledWith('+18003569377', {
+        top: 5,
+      });
     });
 
     it('returns the generated results', async () => {
@@ -79,7 +86,9 @@ describe('VanityNumberService', () => {
 
     it('propagates repository save errors', async () => {
       mockSave.mockRejectedValueOnce(new Error('DynamoDB unavailable'));
-      await expect(svc.processAndSave('+18003569377')).rejects.toThrow('DynamoDB unavailable');
+      await expect(svc.processAndSave('+18003569377')).rejects.toThrow(
+        'DynamoDB unavailable',
+      );
     });
   });
 

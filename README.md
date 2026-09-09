@@ -1,5 +1,7 @@
 # Vanity Number Lambda
 
+→ [Design Notes & Architecture](DESIGN.md)
+
 Converts caller phone numbers into vanity spellings using dictionary word matching. Built with AWS SAM, Amazon Connect, and DynamoDB.
 
 ## How it works

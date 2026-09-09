@@ -7,7 +7,9 @@ const MOCK_RESULT = {
   callers: [
     {
       phoneNumber: '+18003569377',
-      topVanityNumbers: [{ display: '1-800-FLOWERS', spelled: ['FLOWERS'], score: 343 }],
+      topVanityNumbers: [
+        { display: '1-800-FLOWERS', spelled: ['FLOWERS'], score: 343 },
+      ],
       createdAt: '2026-01-01T00:00:00.000Z',
     },
   ],
@@ -21,7 +23,13 @@ function makeEvent(params?: Record<string, string>): APIGatewayProxyEventV2 {
     rawPath: '/callers',
     rawQueryString: '',
     requestContext: {
-      http: { method: 'GET', path: '/callers', protocol: 'HTTP/1.1', sourceIp: '127.0.0.1', userAgent: 'test' },
+      http: {
+        method: 'GET',
+        path: '/callers',
+        protocol: 'HTTP/1.1',
+        sourceIp: '127.0.0.1',
+        userAgent: 'test',
+      },
     } as APIGatewayProxyEventV2['requestContext'],
     isBase64Encoded: false,
     queryStringParameters: params,
@@ -36,7 +44,9 @@ describe('get-vanity-numbers-handler', () => {
 
   beforeEach(() => {
     mockGetRecent = vi.fn().mockResolvedValue(MOCK_RESULT);
-    mockController = { getRecent: mockGetRecent } as unknown as VanityNumberController;
+    mockController = {
+      getRecent: mockGetRecent,
+    } as unknown as VanityNumberController;
   });
 
   describe('limit defaults', () => {
@@ -117,7 +127,9 @@ describe('get-vanity-numbers-handler', () => {
     it('sets Content-Type to application/json', async () => {
       const h = makeHandler(mockController);
       const res = await h(makeEvent(), ctx);
-      expect((res.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+      expect((res.headers as Record<string, string>)['Content-Type']).toBe(
+        'application/json',
+      );
     });
   });
 });
