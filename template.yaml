@@ -1,0 +1,204 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Vanity phone-number converter — Lambda (HTTP API + Amazon Connect),
+  DynamoDB persistence, and an Amazon Connect contact flow.
+
+# ---- Parameters -------------------------------------------------------------
+Parameters:
+  ConnectInstanceArn:
+    Type: String
+    Description: >
+      Full ARN of your Amazon Connect instance, e.g.
+      arn:aws:connect:us-west-2:123456789012:instance/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+  StageName:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+# ---- Globals ----------------------------------------------------------------
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: nodejs22.x
+    Architectures:
+      - x86_64
+
+# ---- Resources --------------------------------------------------------------
+Resources:
+  CallerRecordTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-CallerRecords'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: phoneNumber
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+        - AttributeName: recordType
+          AttributeType: S
+      KeySchema:
+        - AttributeName: phoneNumber
+          KeyType: HASH
+        - AttributeName: createdAt
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: recordType-createdAt-index
+          KeySchema:
+            - AttributeName: recordType
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  VanityIndexLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub '${AWS::StackName}-vanity-index'
+      ContentUri: layers/vanity-index/
+      CompatibleRuntimes:
+        - nodejs22.x
+      RetentionPolicy: Delete
+
+  VanityNumberApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref StageName
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+        AllowHeaders:
+          - Content-Type
+
+  ConnectVanityNumberHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src/handlers/connect/connect-vanity-number-handler.handler
+      Layers:
+        - !Ref VanityIndexLayer
+      Description: Amazon Connect handler — generates vanity numbers and stores in DynamoDB
+      Environment:
+        Variables:
+          CALLER_RECORD_TABLE_NAME: !Ref CallerRecordTable
+          VANITY_NUMBERS_TO_SAVE: '5'
+          VANITY_NUMBERS_TO_RETURN: '3'
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref CallerRecordTable
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: false
+        Format: cjs
+        EntryPoints:
+          - src/handlers/connect/connect-vanity-number-handler.ts
+
+  GetVanityNumbersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src/handlers/api/get-vanity-numbers-handler.handler
+      Description: HTTP API — returns the most recent callers and their top vanity numbers (default limit 5, max 20)
+      Environment:
+        Variables:
+          CALLER_RECORD_TABLE_NAME: !Ref CallerRecordTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref CallerRecordTable
+      Events:
+        GetCallers:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref VanityNumberApi
+            Path: /callers
+            Method: GET
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: false
+        Format: cjs
+        EntryPoints:
+          - src/handlers/api/get-vanity-numbers-handler.ts
+
+  ConnectLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ConnectVanityNumberHandlerFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: connect.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Ref ConnectInstanceArn
+
+  ConnectLambdaIntegration:
+    Type: AWS::Connect::IntegrationAssociation
+    Properties:
+      InstanceId: !Ref ConnectInstanceArn
+      IntegrationType: LAMBDA_FUNCTION
+      IntegrationArn: !GetAtt ConnectVanityNumberHandlerFunction.Arn
+
+  VanityNumberContactFlow:
+    Type: AWS::Connect::ContactFlow
+    DependsOn:
+      - ConnectLambdaIntegration
+      - ConnectLambdaPermission
+    Properties:
+      InstanceArn: !Ref ConnectInstanceArn
+      Name: VanityNumberContactFlow
+      Description: Speaks the top vanity numbers for the caller's phone number
+      Type: CONTACT_FLOW
+      Content: !Sub
+        - >-
+          {"Version":"2019-10-30","StartAction":"b8d41927-398e-488a-a1a4-97b33ec10d92",
+          "Metadata":{"entryPointPosition":{"x":40,"y":40}},
+          "Actions":[
+          {"Identifier":"b8d41927-398e-488a-a1a4-97b33ec10d92","Type":"InvokeLambdaFunction",
+          "Parameters":{"LambdaFunctionARN":"${LambdaArn}","InvocationTimeLimitSeconds":"8"},
+          "Transitions":{"NextAction":"54004209-ee66-471a-8360-33fea0d2fafd",
+          "Errors":[{"NextAction":"73e71660-0da7-4d5d-a8e2-f1b9824ec595","ErrorType":"NoMatchingError"}]}},
+          {"Identifier":"54004209-ee66-471a-8360-33fea0d2fafd","Type":"MessageParticipant",
+          "Parameters":{"Text":"$.External.message"},
+          "Transitions":{"NextAction":"a9917541-0f27-431a-b5d7-7fe64212c8e9",
+          "Errors":[{"NextAction":"a9917541-0f27-431a-b5d7-7fe64212c8e9","ErrorType":"NoMatchingError"}]}},
+          {"Identifier":"73e71660-0da7-4d5d-a8e2-f1b9824ec595","Type":"MessageParticipant",
+          "Parameters":{"Text":"We were unable to process your phone number at this time. Please try again later. Thank you for calling."},
+          "Transitions":{"NextAction":"a9917541-0f27-431a-b5d7-7fe64212c8e9",
+          "Errors":[{"NextAction":"a9917541-0f27-431a-b5d7-7fe64212c8e9","ErrorType":"NoMatchingError"}]}},
+          {"Identifier":"a9917541-0f27-431a-b5d7-7fe64212c8e9","Type":"DisconnectParticipant",
+          "Parameters":{},"Transitions":{}}]}
+        - LambdaArn: !GetAtt ConnectVanityNumberHandlerFunction.Arn
+
+# ---- Outputs ----------------------------------------------------------------
+Outputs:
+  CallersApiUrl:
+    Description: HTTP API endpoint for recent callers
+    Value: !Sub 'https://${VanityNumberApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/callers'
+
+  ConnectVanityNumberHandlerFunctionArn:
+    Description: Amazon Connect Lambda ARN
+    Value: !GetAtt ConnectVanityNumberHandlerFunction.Arn
+
+  GetVanityNumbersFunctionArn:
+    Description: Recent callers Lambda ARN
+    Value: !GetAtt GetVanityNumbersFunction.Arn
+
+  CallerRecordTableName:
+    Description: DynamoDB table storing caller records with top vanity numbers
+    Value: !Ref CallerRecordTable
+
+  ContactFlowArn:
+    Description: Amazon Connect contact flow ARN — assign this flow to a phone number in the Connect console
+    Value: !GetAtt VanityNumberContactFlow.ContactFlowArn
